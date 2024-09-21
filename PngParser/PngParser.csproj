@@ -2,11 +2,32 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <Authors>QuantumCat</Authors>
-    <PackageId>PngParser</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Quantum Cat</Authors>
+    <PackageId>PngParser.Net</PackageId>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Title>PngParser.Net</Title>
+    <Description>Parse and edit the chunks of png, used to modify the basic metadata of png.</Description>
+    <PackageProjectUrl></PackageProjectUrl>
+    <PackageReadmeFile>Readme.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/drunkenQCat/PngParser.Net</RepositoryUrl>
+    <PackageTags>png;metadata;image</PackageTags>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>False</PackageRequireLicenseAcceptance>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\LICENSE.txt">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\Readme.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.IO.Hashing" Version="8.0.0" />

@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+    <Title></Title>
   </PropertyGroup>
 
   <ItemGroup>

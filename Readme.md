@@ -1,6 +1,6 @@
-# PngParser
+# PngParser.Net
 
-PngParser is a lightweight, pure C# library for reading and writing metadata in PNG images. It allows you to extract and modify tEXt and pHYs chunks within PNG files without relying on any external dependencies.
+PngParser.Net is a lightweight, pure C# library for reading and writing metadata in PNG images. It allows you to extract and modify tEXt and pHYs chunks within PNG files without relying on any external dependencies.
 
 ## Features
 
@@ -14,13 +14,13 @@ PngParser is a lightweight, pure C# library for reading and writing metadata in 
 Install the package via NuGet:
 
 ```bash
-Install-Package PngParser
+Install-Package PngParser.Net
 ```
 
 Or via the .NET CLI:
 
 ```bash
-dotnet add package PngParser
+dotnet add package PngParser.Net
 ```
 
 ## Usage
@@ -116,23 +116,14 @@ class Program
 
 ## Compatibility
 
-PngParser targets **.NET Standard 2.0**, making it compatible with:
-
-- .NET Framework 4.6.1 and later
-- .NET Core 2.0 and later
-- Mono 5.4 and later
-- Xamarin.iOS 10.14 and later
-- Xamarin.Mac 3.8 and later
-- Xamarin.Android 8.0 and later
-- Universal Windows Platform 10.0.16299 and later
-- Unity 2018.1 and later
+PngParser.Net targets **.NET 8** and higher, may make some work for compatible and migrate it to .Net Standard 2.0 if someone need it.
 
 ## Building from Source
 
 1. **Clone the Repository**:
 
    ```bash
-   git clone https://github.com/yourusername/PngParser.git
+   git clone https://github.com/drunkenQCat/PngParser.Net.git
    ```
 
 2. **Build the Project**:
@@ -140,7 +131,7 @@ PngParser targets **.NET Standard 2.0**, making it compatible with:
    Navigate to the project directory and build the library:
 
    ```bash
-   cd PngParser
+   cd PngParser.Net
    dotnet build
    ```
 
