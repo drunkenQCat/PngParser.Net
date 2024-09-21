@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PngParser", "PngParser\PngParser.csproj", "{96F34233-6A3D-4D25-AE21-772DE55DBC9E}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PngParserExample", "PngParserExample\PngParserExample.csproj", "{D02C4895-082E-4E3D-8C7F-EE1F2685F515}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PngParser.Tests", "PngParser.Tests\PngParser.Tests.csproj", "{9421626C-4A50-45F3-A908-02AF9EA8E7B0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{96F34233-6A3D-4D25-AE21-772DE55DBC9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{96F34233-6A3D-4D25-AE21-772DE55DBC9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{96F34233-6A3D-4D25-AE21-772DE55DBC9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{96F34233-6A3D-4D25-AE21-772DE55DBC9E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D02C4895-082E-4E3D-8C7F-EE1F2685F515}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D02C4895-082E-4E3D-8C7F-EE1F2685F515}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D02C4895-082E-4E3D-8C7F-EE1F2685F515}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D02C4895-082E-4E3D-8C7F-EE1F2685F515}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9421626C-4A50-45F3-A908-02AF9EA8E7B0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9421626C-4A50-45F3-A908-02AF9EA8E7B0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9421626C-4A50-45F3-A908-02AF9EA8E7B0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9421626C-4A50-45F3-A908-02AF9EA8E7B0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
