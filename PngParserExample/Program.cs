@@ -1,41 +1,51 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
 using PngParser;
 
-namespace PngParserExample;
-
-class Program
+namespace YourApplication
 {
-    static void Main()
+    class Program
     {
-        var pngData = File.ReadAllBytes("input.png");
-
-        // Read metadata
-        var (textData, physData) = PngMetadata.ReadMetadata(pngData);
-
-        foreach (var kvp in textData)
-            Console.WriteLine($"Keyword: {kvp.Key}, Text: {kvp.Value}");
-
-        if (physData != null)
-            Console.WriteLine($"pHYs Data - X: {physData.X}, Y: {physData.Y}, Unit: {physData.Unit}");
-
-        // Modify metadata
-        var newTextData = new Dictionary<string, string>
+        static void Main()
         {
-            { "Author", "John Doe" },
-            { "Description", "Sample PNG image" }
-        };
+            // Read the PNG file
+            byte[] pngData = File.ReadAllBytes("input.png");
 
-        var newPhysData = new PhysChunkData
-        {
-            X = 2835,
-            Y = 2835,
-            Unit = (byte)ResolutionUnits.Meters
-        };
+            // Extract all chunks
+            List<Chunk> chunks = PngMetadata.ReadChunks(pngData);
 
-        var newPngData = PngMetadata.WriteMetadata(pngData, newTextData, newPhysData, clearMetadata: true);
-        File.WriteAllBytes("output.png", newPngData);
+            // Create a new tEXt chunk
+            var textChunk = new Chunk
+            {
+                Name = "tEXt",
+                Data = PngUtilities.TextEncodeData("Author", "John Doe")
+            };
+
+            // Insert or replace the tEXt chunk
+            PngMetadata.AddOrUpdateTextChunk(chunks, textChunk);
+
+            // Create a new pHYs chunk
+            var physChunk = new Chunk
+            {
+                Name = "pHYs",
+                Data = PngUtilities.PhysEncodeData(2835, 2835, (byte)ResolutionUnits.Meters)
+            };
+
+            // Insert or replace the pHYs chunk
+            PngMetadata.InsertOrReplaceChunk(chunks, physChunk);
+
+            // Write the modified chunks back to PNG data
+            byte[] newPngData = PngMetadata.WriteChunks(chunks);
+
+            // Save the modified PNG file
+            File.WriteAllBytes("output.png", newPngData);
+        }
     }
 }
 
