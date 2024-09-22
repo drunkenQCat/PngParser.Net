@@ -1,13 +1,8 @@
 # PngParser.Net
 
-PngParser.Net is a lightweight, pure C# library for reading and writing metadata in PNG images. It allows you to extract and modify tEXt and pHYs chunks within PNG files without relying on any external dependencies.
+PngParser.Net is a lightweight, pure C# library for reading and writing metadata in PNG images, translated from [hometlt/png-metadata](https://github.com/hometlt/png-metadata/tree/master). In current stage, as the original repo, it allows you to extract and modify tEXt and pHYs chunks within PNG files without relying on any external dependencies.
 
-## Features
 
-- **Extract Metadata**: Read tEXt and pHYs chunks from PNG images.
-- **Modify Metadata**: Add, update, or remove tEXt and pHYs chunks.
-- **Lightweight**: No external dependencies; pure C# implementation.
-- **Cross-Platform**: Compatible with any .NET Standard 2.0 compliant framework.
 
 ## Installation
 
@@ -149,10 +144,13 @@ Contributions are welcome! Please open an issue or submit a pull request for any
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE.txt) file for details.
 
 ## Acknowledgements
 
-- The PNG file format specification and related documentation.
+- The PNG file format specification and related documentation:
+  -  [PNG Specification: Chunk Specifications (w3.org)](https://www.w3.org/TR/PNG-Chunks.html)
+  - [The Metadata in PNG files - Exiv2](https://dev.exiv2.org/projects/exiv2/wiki/The_Metadata_in_PNG_files)
+
 - Contributors to the open-source community who have provided guidance and inspiration.
 

@@ -10,7 +10,6 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Title>PngParser.Net</Title>
     <Description>Parse and edit the chunks of png, used to modify the basic metadata of png.</Description>
-    <PackageProjectUrl></PackageProjectUrl>
     <PackageReadmeFile>Readme.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/drunkenQCat/PngParser.Net</RepositoryUrl>
     <PackageTags>png;metadata;image</PackageTags>

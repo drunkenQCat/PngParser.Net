@@ -248,8 +248,6 @@ public static class PngMetadata
             var data = new byte[9];
             BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(0), physData.X);
             BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(4), physData.Y);
-            //WriteUInt32(data, 0, physData.X);
-            //WriteUInt32(data, 4, physData.Y);
             data[8] = physData.Unit;
 
             var existingIndex = chunks.FindIndex(chunk => chunk.Name == "pHYs");
@@ -284,15 +282,6 @@ public static class PngMetadata
         Array.Copy(pngHeader, 0, output, idx, pngHeader.Length);
         idx += pngHeader.Length;
     }
-
-    //private static void WriteUInt32(byte[] buffer, int offset, uint value)
-    //{
-    //    buffer[offset] = (byte)((value >> 24) & 0xFF);
-    //    buffer[offset + 1] = (byte)((value >> 16) & 0xFF);
-    //    buffer[offset + 2] = (byte)((value >> 8) & 0xFF);
-    //    buffer[offset + 3] = (byte)(value & 0xFF);
-    //}
-
     #endregion
 }
 
