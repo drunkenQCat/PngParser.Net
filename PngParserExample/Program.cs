@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using System.Collections.Generic;
 
 using PngParser;
 
@@ -15,20 +9,15 @@ namespace YourApplication
         static void Main()
         {
             // Read the PNG file
-            byte[] pngData = File.ReadAllBytes("input.png");
-
-            // Extract all chunks
-            List<Chunk> chunks = PngMetadata.ReadChunks(pngData);
-
+            var png = new PngMetadata("input.png");
             // Create a new tEXt chunk
-            var textChunk = new Chunk
-            {
-                Name = "tEXt",
-                Data = PngUtilities.TextEncodeData("Author", "John Doe")
+            var textChunk = new Dictionary<string, string>{
+                {"Author" , "John Doe"},
+                {"Description" , "Test Description"}
             };
 
             // Insert or replace the tEXt chunk
-            PngMetadata.AddOrUpdateTextChunk(chunks, textChunk);
+            png.UpdateTextChunks(textChunk);
 
             // Create a new pHYs chunk
             var physChunk = new Chunk
@@ -38,13 +27,10 @@ namespace YourApplication
             };
 
             // Insert or replace the pHYs chunk
-            PngMetadata.InsertOrReplaceChunk(chunks, physChunk);
+            png.InsertOrReplaceChunk(physChunk);
 
             // Write the modified chunks back to PNG data
-            byte[] newPngData = PngMetadata.WriteChunks(chunks);
-
-            // Save the modified PNG file
-            File.WriteAllBytes("output.png", newPngData);
+            png.Save();
         }
     }
 }

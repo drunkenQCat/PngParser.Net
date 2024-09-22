@@ -1,261 +1,31 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
-
-
 using System.Buffers.Binary;
 using System.IO.Hashing;
 using System.Text;
+using System.IO;
 
 namespace PngParser
 {
-    public static class PngMetadata
+    public class PngMetadata
     {
-        /// <summary>
-        /// Reads all chunks from the PNG data.
-        /// </summary>
-        public static List<Chunk> ReadChunks(byte[] buffer)
+        List<Chunk> chunks;
+        string pngPath;
+
+        public PngMetadata(string path)
         {
-            return ExtractChunks(buffer);
-        }
+            pngPath = path;
+            byte[] pngData = File.ReadAllBytes(path);
 
-        /// <summary>
-        /// Writes the list of chunks back into PNG data.
-        /// </summary>
-        public static byte[] WriteChunks(List<Chunk> chunks)
-        {
-            return EncodeChunks(chunks);
-        }
-        
-        /// <summary>
-        /// Adds or updates textual chunks (tEXt, iTXt, zTXt) based on the given dictionary.
-        /// </summary>
-        /// <param name="chunks">List of existing chunks.</param>
-        /// <param name="metadata">Dictionary where keys are keywords and values are the corresponding text.</param>
-        /// <param name="chunkType">The type of textual chunk to write ("tEXt", "iTXt", or "zTXt").</param>
-        public static void AddOrUpdateTextChunksFromDictionary(List<Chunk> chunks, Dictionary<string, string> metadata, string chunkType = "tEXt")
-        {
-            if (metadata == null || !metadata.Any())
-                throw new ArgumentException("Metadata dictionary is empty or null.");
-
-            foreach (var kvp in metadata)
-            {
-                string keyword = kvp.Key;
-                string text = kvp.Value;
-
-                Chunk textChunk;
-
-                // Create the chunk based on the chunk type
-                switch (chunkType)
-                {
-                    case "iTXt":
-                        textChunk = new Chunk
-                        {
-                            Name = "iTXt",
-                            Data = PngUtilities.ITXtEncodeData(keyword, text)
-                        };
-                        break;
-                    case "zTXt":
-                        textChunk = new Chunk
-                        {
-                            Name = "zTXt",
-                            Data = PngUtilities.ZTxtEncodeData(keyword, text)
-                        };
-                        break;
-                    case "tEXt":
-                    default:
-                        textChunk = new Chunk
-                        {
-                            Name = "tEXt",
-                            Data = PngUtilities.TextEncodeData(keyword, text)
-                        };
-                        break;
-                }
-
-                // Add or update the textual chunk
-                AddOrUpdateTextChunk(chunks, textChunk);
-            }
-        }
-        
-        /// <summary>
-        /// Adds or updates a textual chunk (tEXt, iTXt, zTXt) based on the keyword.
-        /// </summary>
-        public static void AddOrUpdateTextChunk(List<Chunk> chunks, Chunk newChunk)
-        {
-            if (!IsTextChunk(newChunk.Name))
-                throw new InvalidOperationException($"AddOrUpdateTextChunk method is only for textual chunks (tEXt, iTXt, zTXt).");
-
-            // Extract the keyword from the newChunk
-            var newKeyword = ExtractKeyword(newChunk);
-
-            // Find existing textual chunk with the same keyword
-            for (int i = 0; i < chunks.Count; i++)
-            {
-                var chunk = chunks[i];
-                if (IsTextChunk(chunk.Name))
-                {
-                    var keyword = ExtractKeyword(chunk);
-                    if (keyword == newKeyword)
-                    {
-                        // Replace the existing chunk
-                        chunks[i] = newChunk;
-                        return;
-                    }
-                }
-            }
-
-            // If not found, add the new textual chunk
-            AddChunk(chunks, newChunk);
-        }
-
-        /// <summary>
-        /// Adds a multi-instance chunk to the list.
-        /// </summary>
-        public static void AddChunk(List<Chunk> chunks, Chunk newChunk)
-        {
-            if (!IsMultiInstanceChunk(newChunk.Name))
-                throw new InvalidOperationException($"Use InsertOrReplaceChunk method for single-instance chunks like {newChunk.Name}.");
-
-            // Insert before IEND chunk
-            var iendIndex = chunks.FindIndex(c => c.Name == "IEND");
-            if (iendIndex >= 0)
-                chunks.Insert(iendIndex, newChunk);
-            else
-                chunks.Add(newChunk); // If IEND not found, append at the end
-        }
-        
-        /// <summary>
-        /// Inserts or replaces a single-instance chunk in the list.
-        /// </summary>
-        public static void InsertOrReplaceChunk(List<Chunk> chunks, Chunk newChunk)
-        {
-            if (IsMultiInstanceChunk(newChunk.Name))
-                throw new InvalidOperationException($"Use AddOrUpdateTextChunk or AddChunk method for multi-instance chunks like {newChunk.Name}.");
-
-            var index = chunks.FindIndex(c => c.Name == newChunk.Name);
-
-            if (index >= 0)
-            {
-                // Replace existing chunk
-                chunks[index] = newChunk;
-            }
-            else
-            {
-                // Insert after IHDR and before IDAT or before IEND if IDAT not found
-                InsertChunkAfterIHDR(chunks, newChunk);
-            }
-        }
-        
-        
-        /// <summary>
-        /// Determines if a chunk type is allowed to have multiple instances.
-        /// </summary>
-        private static bool IsMultiInstanceChunk(string chunkName)
-        {
-            return chunkName == "tEXt" || chunkName == "iTXt" || chunkName == "zTXt";
-            // Add other multi-instance chunk types if needed
-        }
-
-        /// <summary>
-        /// Determines if a chunk is a textual chunk (tEXt, iTXt, zTXt).
-        /// </summary>
-        private static bool IsTextChunk(string chunkName)
-        {
-            return chunkName == "tEXt" || chunkName == "iTXt" || chunkName == "zTXt";
-        }
-
-        /// <summary>
-        /// Extracts the keyword from a textual chunk.
-        /// </summary>
-        private static string ExtractKeyword(Chunk chunk)
-        {
-            switch (chunk.Name)
-            {
-                case "tEXt":
-                    var (keyword, _) = PngUtilities.TextDecode(chunk);
-                    return keyword;
-
-                case "iTXt":
-                    var (iKeyword, _, _, _, _) = PngUtilities.ITXtDecode(chunk);
-                    return iKeyword;
-
-                case "zTXt":
-                    var (zKeyword, _) = PngUtilities.ZTxtDecode(chunk);
-                    return zKeyword;
-
-                default:
-                    throw new InvalidOperationException($"Cannot extract keyword from non-textual chunk {chunk.Name}.");
-            }
-        }
-
-        /// <summary>
-        /// Inserts a chunk after the IHDR chunk.
-        /// </summary>
-        private static void InsertChunkAfterIHDR(List<Chunk> chunks, Chunk newChunk)
-        {
-            var ihdrIndex = chunks.FindIndex(c => c.Name == "IHDR");
-            if (ihdrIndex >= 0)
-            {
-                chunks.Insert(ihdrIndex + 1, newChunk);
-            }
-            else
-            {
-                // If IHDR is not found, insert at the beginning
-                chunks.Insert(0, newChunk);
-            }
-        }
-
-        /// <summary>
-        /// Reads all textual chunks (tEXt, iTXt, zTXt) as a dictionary.
-        /// </summary>
-        /// <param name="chunks">List of PNG chunks.</param>
-        /// <returns>Dictionary where keys are keywords and values are the corresponding text.</returns>
-        public static Dictionary<string, string> ReadTextChunksAsDictionary(List<Chunk> chunks)
-        {
-            var metadata = new Dictionary<string, string>();
-
-            foreach (var chunk in chunks.Where(chunk => IsTextChunk(chunk.Name)))
-            {
-                string keyword;
-                string text;
-
-                switch (chunk.Name)
-                {
-                    case "tEXt":
-                        (keyword, text) = PngUtilities.TextDecode(chunk);
-                        break;
-                    case "iTXt":
-                        (keyword, _, _, _, text) = PngUtilities.ITXtDecode(chunk);
-                        break;
-                    case "zTXt":
-                        (keyword, text) = PngUtilities.ZTxtDecode(chunk);
-                        break;
-                    default:
-                        continue;
-                }
-
-                // Add the keyword and text to the dictionary
-                metadata[keyword] = text;
-            }
-
-            return metadata;
-        }
-        /// <summary>
-        /// Removes a chunk from the list by name.
-        /// </summary>
-        public static void RemoveChunk(List<Chunk> chunks, string chunkName)
-        {
-            chunks.RemoveAll(c => c.Name == chunkName);
+            // Extract all chunks
+            chunks = ReadChunks(pngData);
         }
 
         /// <summary>
         /// Extracts PNG chunks from the given data.
         /// </summary>
-        private static List<Chunk> ExtractChunks(byte[] data)
+        private List<Chunk> ReadChunks(byte[] data)
         {
             if (!IsValidPngHeader(data))
                 throw new Exception("Invalid PNG file header.");
@@ -306,10 +76,242 @@ namespace PngParser
             return chunks;
         }
 
+        public void Save()
+        {
+
+            File.WriteAllBytes(pngPath, WriteChunks(chunks));
+        }
+
+        public void Save(string path)
+        {
+
+            File.WriteAllBytes(path, WriteChunks(chunks));
+        }
+        /// <summary>
+        /// Adds or updates textual chunks (tEXt, iTXt, zTXt) based on the given dictionary.
+        /// </summary>
+        /// <param name="chunks">List of existing chunks.</param>
+        /// <param name="metadata">Dictionary where keys are keywords and values are the corresponding text.</param>
+        /// <param name="chunkType">The type of textual chunk to write ("tEXt", "iTXt", or "zTXt").</param>
+        public void UpdateTextChunks(Dictionary<string, string> metadata, string chunkType = "tEXt")
+        {
+            if (metadata == null || !metadata.Any())
+                throw new ArgumentException("Metadata dictionary is empty or null.");
+
+            foreach (var kvp in metadata)
+            {
+                string keyword = kvp.Key;
+                string text = kvp.Value;
+
+                Chunk textChunk;
+
+                // Create the chunk based on the chunk type
+                switch (chunkType)
+                {
+                    case "iTXt":
+                        textChunk = new Chunk
+                        {
+                            Name = "iTXt",
+                            Data = PngUtilities.ITXtEncodeData(keyword, text)
+                        };
+                        break;
+                    case "zTXt":
+                        textChunk = new Chunk
+                        {
+                            Name = "zTXt",
+                            Data = PngUtilities.ZTxtEncodeData(keyword, text)
+                        };
+                        break;
+                    case "tEXt":
+                    default:
+                        textChunk = new Chunk
+                        {
+                            Name = "tEXt",
+                            Data = PngUtilities.TextEncodeData(keyword, text)
+                        };
+                        break;
+                }
+
+                // Add or update the textual chunk
+                ProcessTextChunk(textChunk);
+            }
+        }
+
+        /// <summary>
+        /// Adds or updates a textual chunk (tEXt, iTXt, zTXt) based on the keyword.
+        /// </summary>
+        public void ProcessTextChunk(Chunk newChunk)
+        {
+            if (!IsTextChunk(newChunk.Name))
+                throw new InvalidOperationException($"AddOrUpdateTextChunk method is only for textual chunks (tEXt, iTXt, zTXt).");
+
+            // Extract the keyword from the newChunk
+            var newKeyword = ExtractKeyword(newChunk);
+
+            // Find existing textual chunk with the same keyword
+            for (int i = 0; i < chunks.Count; i++)
+            {
+                var chunk = chunks[i];
+                if (IsTextChunk(chunk.Name))
+                {
+                    var keyword = ExtractKeyword(chunk);
+                    if (keyword == newKeyword)
+                    {
+                        // Replace the existing chunk
+                        chunks[i] = newChunk;
+                        return;
+                    }
+                }
+            }
+
+            // If not found, add the new textual chunk
+            AddChunk(newChunk);
+        }
+
+        /// <summary>
+        /// Adds a multi-instance chunk to the list.
+        /// </summary>
+        public void AddChunk(Chunk newChunk)
+        {
+            if (!IsMultiInstanceChunk(newChunk.Name))
+                throw new InvalidOperationException($"Use InsertOrReplaceChunk method for single-instance chunks like {newChunk.Name}.");
+
+            // Insert before IEND chunk
+            var iendIndex = chunks.FindIndex(c => c.Name == "IEND");
+            if (iendIndex >= 0)
+                chunks.Insert(iendIndex, newChunk);
+            else
+                chunks.Add(newChunk); // If IEND not found, append at the end
+        }
+
+        /// <summary>
+        /// Inserts or replaces a single-instance chunk in the list.
+        /// </summary>
+        public void InsertOrReplaceChunk(Chunk newChunk)
+        {
+            if (IsMultiInstanceChunk(newChunk.Name))
+                throw new InvalidOperationException($"Use AddOrUpdateTextChunk or AddChunk method for multi-instance chunks like {newChunk.Name}.");
+
+            var index = chunks.FindIndex(c => c.Name == newChunk.Name);
+
+            if (index >= 0)
+            {
+                // Replace existing chunk
+                chunks[index] = newChunk;
+            }
+            else
+            {
+                // Insert after IHDR and before IDAT or before IEND if IDAT not found
+                InsertChunkAfterIHDR(newChunk);
+            }
+        }
+
+
+        /// <summary>
+        /// Determines if a chunk type is allowed to have multiple instances.
+        /// </summary>
+        private bool IsMultiInstanceChunk(string chunkName)
+        {
+            return chunkName == "tEXt" || chunkName == "iTXt" || chunkName == "zTXt";
+            // Add other multi-instance chunk types if needed
+        }
+
+        /// <summary>
+        /// Determines if a chunk is a textual chunk (tEXt, iTXt, zTXt).
+        /// </summary>
+        private bool IsTextChunk(string chunkName)
+        {
+            return chunkName == "tEXt" || chunkName == "iTXt" || chunkName == "zTXt";
+        }
+
+        /// <summary>
+        /// Extracts the keyword from a textual chunk.
+        /// </summary>
+        private string ExtractKeyword(Chunk chunk)
+        {
+            switch (chunk.Name)
+            {
+                case "tEXt":
+                    var (keyword, _) = PngUtilities.TextDecode(chunk);
+                    return keyword;
+
+                case "iTXt":
+                    var (iKeyword, _, _, _, _) = PngUtilities.ITXtDecode(chunk);
+                    return iKeyword;
+
+                case "zTXt":
+                    var (zKeyword, _) = PngUtilities.ZTxtDecode(chunk);
+                    return zKeyword;
+
+                default:
+                    throw new InvalidOperationException($"Cannot extract keyword from non-textual chunk {chunk.Name}.");
+            }
+        }
+
+        /// <summary>
+        /// Inserts a chunk after the IHDR chunk.
+        /// </summary>
+        private void InsertChunkAfterIHDR(Chunk newChunk)
+        {
+            var ihdrIndex = chunks.FindIndex(c => c.Name == "IHDR");
+            if (ihdrIndex >= 0)
+            {
+                chunks.Insert(ihdrIndex + 1, newChunk);
+            }
+            else
+            {
+                // If IHDR is not found, insert at the beginning
+                chunks.Insert(0, newChunk);
+            }
+        }
+
+        /// <summary>
+        /// Reads all textual chunks (tEXt, iTXt, zTXt) as a dictionary.
+        /// </summary>
+        /// <param name="chunks">List of PNG chunks.</param>
+        /// <returns>Dictionary where keys are keywords and values are the corresponding text.</returns>
+        public Dictionary<string, string> ReadTextChunks()
+        {
+            var metadata = new Dictionary<string, string>();
+
+            foreach (var chunk in chunks.Where(chunk => IsTextChunk(chunk.Name)))
+            {
+                string keyword;
+                string text;
+
+                switch (chunk.Name)
+                {
+                    case "tEXt":
+                        (keyword, text) = PngUtilities.TextDecode(chunk);
+                        break;
+                    case "iTXt":
+                        (keyword, _, _, _, text) = PngUtilities.ITXtDecode(chunk);
+                        break;
+                    case "zTXt":
+                        (keyword, text) = PngUtilities.ZTxtDecode(chunk);
+                        break;
+                    default:
+                        continue;
+                }
+
+                // Add the keyword and text to the dictionary
+                metadata[keyword] = text;
+            }
+
+            return metadata;
+        }
+        /// <summary>
+        /// Removes a chunk from the list by name.
+        /// </summary>
+        public void RemoveChunk(string chunkName)
+        {
+            chunks.RemoveAll(c => c.Name == chunkName);
+        }
+
         /// <summary>
         /// Encodes a list of chunks into PNG data.
         /// </summary>
-        private static byte[] EncodeChunks(List<Chunk> chunks)
+        private byte[] WriteChunks()
         {
             int totalSize = 8; // PNG signature
 
@@ -354,7 +356,7 @@ namespace PngParser
         /// <summary>
         /// Computes the CRC-32 checksum for the given data.
         /// </summary>
-        private static uint ComputeCrc32(byte[] data)
+        private uint ComputeCrc32(byte[] data)
         {
             uint crc = Crc32.HashToUInt32(data);
             return crc;
@@ -362,7 +364,7 @@ namespace PngParser
 
         #region Helper Methods
 
-        private static bool IsValidPngHeader(byte[] data)
+        private bool IsValidPngHeader(byte[] data)
         {
             var pngSignature = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 };
             if (data.Length < pngSignature.Length)
@@ -371,7 +373,7 @@ namespace PngParser
             return data.AsSpan(0, pngSignature.Length).SequenceEqual(pngSignature);
         }
 
-        private static void WritePngHeader(byte[] output, ref int idx)
+        private void WritePngHeader(byte[] output, ref int idx)
         {
             var pngSignature = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 };
             pngSignature.CopyTo(output.AsSpan(idx));

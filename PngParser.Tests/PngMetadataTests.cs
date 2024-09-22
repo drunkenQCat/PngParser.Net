@@ -33,40 +33,6 @@ namespace PngParser.Tests
             string withMetaImagePath = Path.Combine(TestImagesFolder, "with_meta.png");
             if (!File.Exists(withMetaImagePath))
             {
-                var chunks = new List<Chunk>();
-
-                // Create IHDR chunk (we can copy from the empty image)
-                var emptyImageData = File.ReadAllBytes(emptyMetaImagePath);
-                var emptyChunks = PngMetadata.ReadChunks(emptyImageData);
-                var ihdrChunk = emptyChunks.Find(c => c.Name == "IHDR");
-                chunks.Add(ihdrChunk);
-
-                // Add IDAT chunk (we can copy from the empty image)
-                var idatChunk = emptyChunks.Find(c => c.Name == "IDAT");
-                chunks.Add(idatChunk);
-
-                // Add tEXt chunks
-                var textChunk1 = new Chunk
-                {
-                    Name = "tEXt",
-                    Data = PngUtilities.TextEncodeData("Author", "John Doe")
-                };
-                chunks.Add(textChunk1);
-
-                var textChunk2 = new Chunk
-                {
-                    Name = "tEXt",
-                    Data = PngUtilities.TextEncodeData("Description", "Test Author")
-                };
-                chunks.Add(textChunk2);
-
-                // Add IEND chunk
-                var iendChunk = new Chunk { Name = "IEND", Data = Array.Empty<byte>() };
-                chunks.Add(iendChunk);
-
-                // Write the chunks to create the image
-                var pngData = PngMetadata.WriteChunks(chunks);
-                File.WriteAllBytes(withMetaImagePath, pngData);
             }
         }
 
@@ -74,32 +40,22 @@ namespace PngParser.Tests
         public void ReadMetadata_ShouldExtractTextChunks()
         {
             // Arrange
-            var pngData = File.ReadAllBytes(Path.Combine(TestImagesFolder, "with_meta.png"));
+            var pngData = new PngMetadata(Path.Combine(TestImagesFolder, "with_meta.png"));
 
             // Act
-            var chunks = PngMetadata.ReadChunks(pngData);
-
-            // Extract tEXt chunks
-            var textChunks = chunks.FindAll(c => c.Name == "tEXt");
-            var textData = new Dictionary<string, string>();
-            foreach (var chunk in textChunks)
-            {
-                var (keyword, text) = PngUtilities.TextDecode(chunk);
-                textData[keyword] = text;
-            }
-
+            var textData = pngData.ReadTextChunks();
             // Assert
             Assert.NotEmpty(textData);
             Assert.True(textData.ContainsKey("Author"));
             Assert.Equal("John Doe", textData["Author"]);
         }
 
-        
+
         [Fact]
         public void WriteMetadata_ShouldAddOrUpdateTextualChunks()
         {
             // Arrange
-            var pngData = File.ReadAllBytes(Path.Combine(TestImagesFolder, "with_meta.png"));
+            var pngData = new PngMetadata(Path.Combine(TestImagesFolder, "with_meta.png"));
             var chunks = PngMetadata.ReadChunks(pngData);
 
             // Create new textual chunks
@@ -128,7 +84,7 @@ namespace PngParser.Tests
             // Act
             foreach (var textChunk in newTextChunks)
             {
-                PngMetadata.AddOrUpdateTextChunk(chunks, textChunk);
+                pngData.UpdateTextChunks(textChunk);
             }
 
             var newPngData = PngMetadata.WriteChunks(chunks);
