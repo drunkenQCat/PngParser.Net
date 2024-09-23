@@ -1,110 +1,120 @@
-﻿namespace PngParser.Tests;
+﻿using System.Collections.Generic;
+using System.IO;
 
-public class PngMetadataTests
+namespace PngParser.Tests
 {
-    private const string TestImagesFolder = "TestImages";
-
-    public PngMetadataTests()
+    public class PngMetadataTests
     {
-        // Ensure the TestImages folder exists
-        if (!Directory.Exists(TestImagesFolder))
+        private const string TestImagesFolder = "TestImages";
+        private const string EmptyPngPath = "TestImages/empty_meta.png";
+        private const string TextualPngPath = "TestImages/with_meta.png";
+        private const string NewPngPath = "TestImages/new_meta.png";
+
+        public PngMetadataTests()
         {
-            Directory.CreateDirectory(TestImagesFolder);
+            // Ensure the TestImages folder exists
+            if (!Directory.Exists(TestImagesFolder))
+            {
+                Directory.CreateDirectory(TestImagesFolder);
+            }
+
+            // Generate or copy a test PNG file (ensure a valid original.png exists in TestImages)
+            if (!File.Exists(EmptyPngPath))
+            {
+                // Generate a simple PNG (could use an external tool or provide a minimal PNG file)
+                // You can also copy an existing valid PNG here.
+            }
         }
 
-        // Generate test images
-        GenerateTestImages();
-    }
-
-    private void GenerateTestImages()
-    {
-        // Generate an all-white PNG image
-        string whiteImagePath = Path.Combine(TestImagesFolder, "empty_meta.png");
-        if (!File.Exists(whiteImagePath))
+        [Fact]
+        public void InitializePngMetadata_ShouldReadChunks()
         {
-            //ImageGenerator.GenerateAllWhitePng(whiteImagePath, 100, 100);
+            // Arrange
+            var pngMetadata = new PngMetadata(TextualPngPath);
+
+            // Act
+            var chunks = pngMetadata.ReadTextChunks();
+
+            // Assert
+            Assert.NotEmpty(chunks);  // Should contain at least the IHDR, IDAT, and IEND chunks
         }
 
-        // Generate an all-black PNG image with metadata
-        string blackImagePath = Path.Combine(TestImagesFolder, "with_meta.png");
-        if (!File.Exists(blackImagePath))
+        [Fact]
+        public void UpdateTextChunks_ShouldAddNewMetadata()
         {
-            var metadata = new Dictionary<string, string>
+            // Arrange
+            var pngMetadata = new PngMetadata(EmptyPngPath);
+            var newMetadata = new Dictionary<string, string>
             {
                 { "Author", "John Doe" },
-                { "Description", "Test Author" }
+                { "Description", "Test PNG image with metadata" }
             };
-            //ImageGenerator.GenerateAllBlackPngWithMetadata(blackImagePath, 100, 100, metadata);
+
+            // Act
+            pngMetadata.UpdateTextChunks(newMetadata);
+            pngMetadata.Save(NewPngPath);
+
+            // Assert
+            var updatedMetadata = new PngMetadata(NewPngPath);
+            var textChunks = updatedMetadata.ReadTextChunks();
+            Assert.True(textChunks.ContainsKey("Author"));
+            Assert.Equal("John Doe", textChunks["Author"]);
+            Assert.True(textChunks.ContainsKey("Description"));
+            Assert.Equal("Test PNG image with metadata", textChunks["Description"]);
         }
-    }
 
-    [Fact]
-    public void ReadMetadata_ShouldExtractTextChunks()
-    {
-        // Arrange
-        var pngData = File.ReadAllBytes(Path.Combine(TestImagesFolder, "with_meta.png"));
-
-        // Act
-        var (textData, _) = PngMetadata.ReadMetadata(pngData);
-
-        // Assert
-        Assert.NotEmpty(textData);
-        Assert.True(textData.ContainsKey("Author"));
-        Assert.Equal("John Doe", textData["Author"]);
-    }
-
-    [Fact]
-    public void WriteMetadata_ShouldAddTextChunks()
-    {
-        // Arrange
-        var pngData = File.ReadAllBytes(Path.Combine(TestImagesFolder, "empty_meta.png"));
-        var newTextData = new Dictionary<string, string>
+        [Fact]
+        public void ReadTextChunks_ShouldReturnCorrectMetadata()
         {
-            { "Title", "Unit Test Image" },
-            { "Description", "This image is used for unit testing." }
-        };
+            // Arrange
+            var pngMetadata = new PngMetadata(TextualPngPath);
 
-        // Act
-        var newPngData = PngMetadata.WriteMetadata(pngData, newTextData);
-        var (textData, _) = PngMetadata.ReadMetadata(newPngData);
+            // Act
+            var textChunks = pngMetadata.ReadTextChunks();
 
-        // Assert
-        Assert.True(textData.ContainsKey("Title"));
-        Assert.Equal("Unit Test Image", textData["Title"]);
-        Assert.True(textData.ContainsKey("Description"));
-        Assert.Equal("This image is used for unit testing.", textData["Description"]);
-    }
+            // Assert
+            Assert.True(textChunks.ContainsKey("Author"));
+            Assert.Equal("John Doe", textChunks["Author"]);
+        }
 
-    [Fact]
-    public void InsertMetadata_ShouldUpdatePhysChunk()
-    {
-        // Arrange
-        var pngData = File.ReadAllBytes(Path.Combine(TestImagesFolder, "empty_meta.png"));
-        var physData = new PhysChunkData
+        [Fact]
+        public void RemoveChunk_ShouldRemoveSpecifiedChunk()
         {
-            X = 2835,
-            Y = 2835,
-            Unit = (byte)ResolutionUnits.Meters
-        };
+            // Arrange
+            var pngMetadata = new PngMetadata(TextualPngPath);
 
-        // Act
-        var newPngData = PngMetadata.WriteMetadata(pngData, physData: physData);
-        var (_, extractedPhysData) = PngMetadata.ReadMetadata(newPngData);
+            // Act
+            pngMetadata.RemoveChunk("tEXt");  // Remove all tEXt chunks
+            pngMetadata.Save(NewPngPath);
 
-        // Assert
-        Assert.NotNull(extractedPhysData);
-        Assert.Equal(2835u, extractedPhysData!.X);
-        Assert.Equal(2835u, extractedPhysData.Y);
-        Assert.Equal((byte)ResolutionUnits.Meters, extractedPhysData.Unit);
-    }
+            // Assert
+            var updatedMetadata = new PngMetadata(NewPngPath);
+            var textChunks = updatedMetadata.ReadTextChunks();
+            Assert.Empty(textChunks);  // All tEXt chunks should be removed
+        }
 
-    [Fact]
-    public void ExtractChunks_InvalidHeader_ShouldThrowException()
-    {
-        // Arrange
-        var invalidData = new byte[] { 0x00, 0x01, 0x02 };
+        [Fact]
+        public void InsertOrReplaceChunk_ShouldReplaceChunkSuccessfully()
+        {
+            // Arrange
+            var pngMetadata = new PngMetadata(EmptyPngPath);
+            var physChunk = new Chunk
+            {
+                Name = "pHYs",
+                Data = PngUtilities.PhysEncodeData(2835, 2835, (byte)ResolutionUnits.Meters)
+            };
 
-        // Act & Assert
-        Assert.Throws<Exception>(() => PngMetadata.ExtractChunks(invalidData));
+            // Act
+            pngMetadata.InsertOrReplaceChunk(physChunk);
+            pngMetadata.Save(NewPngPath);
+
+            // Assert
+            var updatedMetadata = new PngMetadata(NewPngPath);
+            var chunk = updatedMetadata.ReadPhysChunk();
+            // Verify that the chunk was inserted correctly (in this case, using pHYs example)
+            Assert.Equal((uint)2835, chunk.X);
+            Assert.Equal((uint)2835, chunk.Y);
+            Assert.True(chunk.Unit == (byte)ResolutionUnits.Meters);
+        }
     }
 }

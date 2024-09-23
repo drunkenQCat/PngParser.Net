@@ -1,287 +1,402 @@
-using System.Text;
-using System.IO.Hashing;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Buffers.Binary;
+using System.IO.Hashing;
+using System.Text;
+using System.IO;
 
-
-namespace PngParser;
-
-public static class PngMetadata
+namespace PngParser
 {
-    /// <summary>
-    /// Encodes a tEXt chunk with the given keyword and content.
-    /// </summary>
-    public static Chunk TextEncode(string keyword, string content, string chunkName = "tEXt")
+    public class PngMetadata
     {
-        keyword ??= string.Empty;
-        content ??= string.Empty;
+        List<Chunk> chunks;
+        string pngPath;
 
-        if (content.Length > 0 && (!IsLatin1(keyword) || !IsLatin1(content)))
-            throw new Exception("Only Latin-1 characters are permitted in PNG tEXt chunks. Consider base64 encoding and/or zEXt compression.");
-
-        if (keyword.Length >= 80)
-            throw new Exception($"Keyword \"{keyword}\" exceeds the 79-character limit imposed by the PNG specification.");
-
-        var totalSize = keyword.Length + content.Length + 1;
-        var output = new byte[totalSize];
-        var idx = 0;
-
-        foreach (var ch in keyword)
+        public PngMetadata(string path)
         {
-            if (ch == 0)
-                throw new Exception("0x00 character is not permitted in tEXt keywords.");
+            pngPath = path;
+            byte[] pngData = File.ReadAllBytes(path);
 
-            output[idx++] = (byte)ch;
+            // Extract all chunks
+            chunks = ReadChunks(pngData);
         }
 
-        output[idx++] = 0; // Null separator
-
-        foreach (var ch in content)
+        /// <summary>
+        /// Extracts PNG chunks from the given data.
+        /// </summary>
+        private List<Chunk> ReadChunks(byte[] data)
         {
-            if (ch == 0)
-                throw new Exception("0x00 character is not permitted in tEXt content.");
+            if (!IsValidPngHeader(data))
+                throw new Exception("Invalid PNG file header.");
 
-            output[idx++] = (byte)ch;
-        }
+            var chunks = new List<Chunk>();
+            var idx = 8; // Skip PNG signature
 
-        return new Chunk { Name = chunkName, Data = output };
-    }
-
-    /// <summary>
-    /// Decodes a tEXt chunk and returns the keyword and text.
-    /// </summary>
-    public static (string Keyword, string Text) TextDecode(Chunk chunk)
-    {
-        var data = chunk.Data;
-        var naming = true;
-        var keyword = new StringBuilder();
-        var text = new StringBuilder();
-
-        foreach (var code in data)
-        {
-            if (naming)
+            while (idx < data.Length)
             {
-                if (code != 0)
-                    keyword.Append((char)code);
-                else
-                    naming = false;
+                if (idx + 8 > data.Length)
+                    throw new Exception("Unexpected end of data while reading chunk length and type.");
+
+                // Read chunk length (4 bytes, big-endian)
+                var length = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(idx));
+                idx += 4;
+
+                // Read chunk type/name (4 bytes)
+                var name = Encoding.ASCII.GetString(data, idx, 4);
+                idx += 4;
+
+                // Read chunk data
+                if (idx + length > data.Length)
+                    throw new Exception($"Unexpected end of data while reading chunk {name}.");
+
+                var chunkData = data.AsSpan(idx, (int)length).ToArray();
+                idx += (int)length;
+
+                // Read CRC (4 bytes)
+                if (idx + 4 > data.Length)
+                    throw new Exception("Unexpected end of data while reading chunk CRC.");
+
+                var crcActual = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(idx));
+                idx += 4;
+
+                // Verify CRC
+                var crcData = new byte[4 + length];
+                Encoding.ASCII.GetBytes(name, 0, 4, crcData, 0);
+                chunkData.CopyTo(crcData.AsSpan(4));
+
+                var crcExpected = ComputeCrc32(crcData);
+
+                if (crcActual != crcExpected)
+                    throw new Exception($"CRC mismatch for chunk {name}. File may be corrupted.");
+
+                chunks.Add(new Chunk { Name = name, Data = chunkData });
+            }
+
+            return chunks;
+        }
+
+        public void Save()
+        {
+
+            File.WriteAllBytes(pngPath, WriteChunks());
+        }
+
+        public void Save(string path)
+        {
+
+            File.WriteAllBytes(path, WriteChunks());
+        }
+        /// <summary>
+        /// Adds or updates textual chunks (tEXt, iTXt, zTXt) based on the given dictionary.
+        /// </summary>
+        /// <param name="chunks">List of existing chunks.</param>
+        /// <param name="metadata">Dictionary where keys are keywords and values are the corresponding text.</param>
+        /// <param name="chunkType">The type of textual chunk to write ("tEXt", "iTXt", or "zTXt").</param>
+        public void UpdateTextChunks(Dictionary<string, string> metadata, string chunkType = "tEXt")
+        {
+            if (metadata == null || !metadata.Any())
+                throw new ArgumentException("Metadata dictionary is empty or null.");
+
+            foreach (var kvp in metadata)
+            {
+                string keyword = kvp.Key;
+                string text = kvp.Value;
+
+                Chunk textChunk;
+
+                // Create the chunk based on the chunk type
+                switch (chunkType)
+                {
+                    case "iTXt":
+                        textChunk = new Chunk
+                        {
+                            Name = "iTXt",
+                            Data = PngUtilities.ITXtEncodeData(keyword, text)
+                        };
+                        break;
+                    case "zTXt":
+                        textChunk = new Chunk
+                        {
+                            Name = "zTXt",
+                            Data = PngUtilities.ZTxtEncodeData(keyword, text)
+                        };
+                        break;
+                    case "tEXt":
+                    default:
+                        textChunk = new Chunk
+                        {
+                            Name = "tEXt",
+                            Data = PngUtilities.TextEncodeData(keyword, text)
+                        };
+                        break;
+                }
+
+                // Add or update the textual chunk
+                ProcessTextChunk(textChunk);
+            }
+        }
+
+        /// <summary>
+        /// Adds or updates a textual chunk (tEXt, iTXt, zTXt) based on the keyword.
+        /// </summary>
+        public void ProcessTextChunk(Chunk newChunk)
+        {
+            if (!IsTextChunk(newChunk.Name))
+                throw new InvalidOperationException($"AddOrUpdateTextChunk method is only for textual chunks (tEXt, iTXt, zTXt).");
+
+            // Extract the keyword from the newChunk
+            var newKeyword = ExtractKeyword(newChunk);
+
+            // Find existing textual chunk with the same keyword
+            for (int i = 0; i < chunks.Count; i++)
+            {
+                var chunk = chunks[i];
+                if (IsTextChunk(chunk.Name))
+                {
+                    var keyword = ExtractKeyword(chunk);
+                    if (keyword == newKeyword)
+                    {
+                        // Replace the existing chunk
+                        chunks[i] = newChunk;
+                        return;
+                    }
+                }
+            }
+
+            // If not found, add the new textual chunk
+            AddChunk(newChunk);
+        }
+
+        /// <summary>
+        /// Adds a multi-instance chunk to the list.
+        /// </summary>
+        public void AddChunk(Chunk newChunk)
+        {
+            if (!IsMultiInstanceChunk(newChunk.Name))
+                throw new InvalidOperationException($"Use InsertOrReplaceChunk method for single-instance chunks like {newChunk.Name}.");
+
+            // Insert before IEND chunk
+            var iendIndex = chunks.FindIndex(c => c.Name == "IEND");
+            if (iendIndex >= 0)
+                chunks.Insert(iendIndex, newChunk);
+            else
+                chunks.Add(newChunk); // If IEND not found, append at the end
+        }
+
+        /// <summary>
+        /// Inserts or replaces a single-instance chunk in the list.
+        /// </summary>
+        public void InsertOrReplaceChunk(Chunk newChunk)
+        {
+            if (IsMultiInstanceChunk(newChunk.Name))
+                throw new InvalidOperationException($"Use AddOrUpdateTextChunk or AddChunk method for multi-instance chunks like {newChunk.Name}.");
+
+            var index = chunks.FindIndex(c => c.Name == newChunk.Name);
+
+            if (index >= 0)
+            {
+                // Replace existing chunk
+                chunks[index] = newChunk;
             }
             else
             {
-                if (code != 0)
-                    text.Append((char)code);
-                else
-                    throw new Exception("Invalid NULL character found. 0x00 character is not permitted in tEXt content.");
+                // Insert after IHDR and before IDAT or before IEND if IDAT not found
+                InsertChunkAfterIHDR(newChunk);
             }
         }
 
-        return (keyword.ToString(), text.ToString());
-    }
 
-    /// <summary>
-    /// Extracts PNG chunks from the given data.
-    /// </summary>
-    public static List<Chunk> ExtractChunks(byte[] data)
-    {
-        if (!IsValidPngHeader(data))
-            throw new Exception("Invalid .png file header.");
-
-        var chunks = new List<Chunk>();
-        var idx = 8;
-        var ended = false;
-
-        while (idx < data.Length)
+        /// <summary>
+        /// Determines if a chunk type is allowed to have multiple instances.
+        /// </summary>
+        private bool IsMultiInstanceChunk(string chunkName)
         {
-            if (idx + 8 > data.Length)
-                throw new Exception("Unexpected end of data while reading chunk length and type.");
-
-            var length = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(idx));
-            idx += 4;
-
-            var name = Encoding.ASCII.GetString(data, idx, 4);
-            idx += 4;
-
-            if (name == "IEND")
-            {
-                ended = true;
-                chunks.Add(new Chunk { Name = name, Data = [] });
-                break;
-            }
-
-            if (idx + length > data.Length)
-                throw new Exception("Unexpected end of data while reading chunk data.");
-
-            var chunkData = new byte[length];
-            Array.Copy(data, idx, chunkData, 0, length);
-            idx += (int)length;
-
-            if (idx + 4 > data.Length)
-                throw new Exception("Unexpected end of data while reading chunk CRC.");
-
-            var crcActual = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(idx));
-
-            idx += 4;
-
-            var crcChunk = new byte[4 + length];
-            Encoding.ASCII.GetBytes(name, 0, 4, crcChunk, 0);
-            Array.Copy(chunkData, 0, crcChunk, 4, length);
-
-            var crcExpected = Crc32.HashToUInt32(crcChunk);
-
-            if (crcActual != crcExpected)
-                throw new Exception($"CRC values for {name} header do not match; PNG file is likely corrupted.");
-
-            chunks.Add(new Chunk { Name = name, Data = chunkData });
+            return chunkName == "tEXt" || chunkName == "iTXt" || chunkName == "zTXt";
+            // Add other multi-instance chunk types if needed
         }
 
-        if (!ended)
-            throw new Exception(".png file ended prematurely: no IEND header was found.");
-
-        return chunks;
-    }
-
-    /// <summary>
-    /// Encodes PNG chunks into a byte array.
-    /// </summary>
-    public static byte[] EncodeChunks(List<Chunk> chunks)
-    {
-        var totalSize = 8; // PNG header size
-
-        foreach (var chunk in chunks)
-            totalSize += 12 + chunk.Data.Length; // Length + Chunk Type + Data + CRC
-
-        var output = new byte[totalSize];
-        var idx = 0;
-
-        // Write PNG header
-        WritePngHeader(output, ref idx);
-
-        foreach (var chunk in chunks)
+        /// <summary>
+        /// Determines if a chunk is a textual chunk (tEXt, iTXt, zTXt).
+        /// </summary>
+        private bool IsTextChunk(string chunkName)
         {
-            BinaryPrimitives.WriteUInt32BigEndian(output.AsSpan(idx), (uint)chunk.Data.Length);
-            //WriteUInt32(output, idx, (uint)chunk.Data.Length);
-            idx += 4;
-
-            var nameBytes = Encoding.ASCII.GetBytes(chunk.Name);
-            Array.Copy(nameBytes, 0, output, idx, 4);
-            idx += 4;
-
-            Array.Copy(chunk.Data, 0, output, idx, chunk.Data.Length);
-            idx += chunk.Data.Length;
-
-            var crcData = new byte[4 + chunk.Data.Length];
-            Array.Copy(nameBytes, 0, crcData, 0, 4);
-            Array.Copy(chunk.Data, 0, crcData, 4, chunk.Data.Length);
-            var crc = Crc32.HashToUInt32(crcData);
-
-            BinaryPrimitives.WriteUInt32BigEndian(output.AsSpan(idx), crc);
-            //WriteUInt32(output, idx, crc);
-            idx += 4;
+            return chunkName == "tEXt" || chunkName == "iTXt" || chunkName == "zTXt";
         }
 
-        return output;
-    }
+        /// <summary>
+        /// Determines if a chunk is a textual chunk (tEXt, iTXt, zTXt).
+        /// </summary>
+        private bool IsPhysChunk(string chunkName)
+        {
+            return chunkName == "pHYs";
+        }
 
-    /// <summary>
-    /// Reads PNG metadata (tEXt and pHYs chunks).
-    /// </summary>
-    public static (Dictionary<string, string> TextData, PhysChunkData? PhysData) ReadMetadata(byte[] buffer)
-    {
-        var textData = new Dictionary<string, string>();
-        PhysChunkData? physData = null;
-        var chunks = ExtractChunks(buffer);
-
-        foreach (var chunk in chunks)
+        /// <summary>
+        /// Extracts the keyword from a textual chunk.
+        /// </summary>
+        private string ExtractKeyword(Chunk chunk)
         {
             switch (chunk.Name)
             {
                 case "tEXt":
-                    var (keyword, text) = TextDecode(chunk);
-                    textData[keyword] = text;
-                    break;
-                case "pHYs":
-                    physData = new PhysChunkData
-                    {
-                        X = BinaryPrimitives.ReadUInt32BigEndian(chunk.Data.AsSpan(0)),
-                        Y = BinaryPrimitives.ReadUInt32BigEndian(chunk.Data.AsSpan(4)),
-                        Unit = chunk.Data[8]
-                    };
-                    break;
+                    var (keyword, _) = PngUtilities.TextDecode(chunk);
+                    return keyword;
+
+                case "iTXt":
+                    var (iKeyword, _, _, _, _) = PngUtilities.ITXtDecode(chunk);
+                    return iKeyword;
+
+                case "zTXt":
+                    var (zKeyword, _) = PngUtilities.ZTxtDecode(chunk);
+                    return zKeyword;
+
+                default:
+                    throw new InvalidOperationException($"Cannot extract keyword from non-textual chunk {chunk.Name}.");
             }
         }
 
-        return (textData, physData);
-    }
-
-    /// <summary>
-    /// Writes PNG metadata into a buffer.
-    /// </summary>
-    public static byte[] WriteMetadata(byte[] buffer, Dictionary<string, string>? textData = null, PhysChunkData? physData = null, bool clearMetadata = false)
-    {
-        var chunks = ExtractChunks(buffer);
-        InsertMetadata(chunks, textData, physData, clearMetadata);
-        return EncodeChunks(chunks);
-    }
-
-    /// <summary>
-    /// Inserts metadata into the list of PNG chunks.
-    /// </summary>
-    public static void InsertMetadata(List<Chunk> chunks, Dictionary<string, string>? textData, PhysChunkData? physData, bool clearMetadata)
-    {
-        if (clearMetadata)
-            chunks.RemoveAll(chunk => chunk.Name != "IHDR" && chunk.Name != "IDAT" && chunk.Name != "IEND");
-
-        if (textData != null)
+        /// <summary>
+        /// Inserts a chunk after the IHDR chunk.
+        /// </summary>
+        private void InsertChunkAfterIHDR(Chunk newChunk)
         {
-            foreach (var kvp in textData)
+            var ihdrIndex = chunks.FindIndex(c => c.Name == "IHDR");
+            if (ihdrIndex >= 0)
             {
-                var textChunk = TextEncode(kvp.Key, kvp.Value);
-                var iendIndex = chunks.FindIndex(chunk => chunk.Name == "IEND");
-                if (iendIndex >= 0)
-                    chunks.Insert(iendIndex, textChunk);
-                else
-                    chunks.Add(textChunk); // If IEND not found, append at the end
+                chunks.Insert(ihdrIndex + 1, newChunk);
             }
-        }
-
-        if (physData != null)
-        {
-            var data = new byte[9];
-            BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(0), physData.X);
-            BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(4), physData.Y);
-            data[8] = physData.Unit;
-
-            var existingIndex = chunks.FindIndex(chunk => chunk.Name == "pHYs");
-            var physChunk = new Chunk { Name = "pHYs", Data = data };
-
-            if (existingIndex >= 0)
-                chunks[existingIndex] = physChunk;
             else
             {
-                var ihdrIndex = chunks.FindIndex(chunk => chunk.Name == "IHDR");
-                if (ihdrIndex >= 0)
-                    chunks.Insert(ihdrIndex + 1, physChunk); // After IHDR
-                else
-                    chunks.Insert(0, physChunk); // If IHDR not found, insert at the beginning
+                // If IHDR is not found, insert at the beginning
+                chunks.Insert(0, newChunk);
             }
         }
+
+        /// <summary>
+        /// Reads all textual chunks (tEXt, iTXt, zTXt) as a dictionary.
+        /// </summary>
+        /// <param name="chunks">List of PNG chunks.</param>
+        /// <returns>Dictionary where keys are keywords and values are the corresponding text.</returns>
+        public Dictionary<string, string> ReadTextChunks()
+        {
+            var metadata = new Dictionary<string, string>();
+
+            foreach (var chunk in chunks.Where(chunk => IsTextChunk(chunk.Name)))
+            {
+                string keyword;
+                string text;
+
+                switch (chunk.Name)
+                {
+                    case "tEXt":
+                        (keyword, text) = PngUtilities.TextDecode(chunk);
+                        break;
+                    case "iTXt":
+                        (keyword, _, _, _, text) = PngUtilities.ITXtDecode(chunk);
+                        break;
+                    case "zTXt":
+                        (keyword, text) = PngUtilities.ZTxtDecode(chunk);
+                        break;
+                    default:
+                        continue;
+                }
+
+                // Add the keyword and text to the dictionary
+                metadata[keyword] = text;
+            }
+
+            return metadata;
+        }
+        public PhysChunkData ReadPhysChunk()
+        {
+            var metadata = new Dictionary<string, string>();
+
+            var phys = chunks.FirstOrDefault(chunk => IsPhysChunk(chunk.Name))
+                             ?? throw new InvalidDataException("\"No chunk with IsPhysChunk found.");
+            return PngUtilities.PhysDecodeData(phys);
+        }
+        /// <summary>
+        /// Removes a chunk from the list by name.
+        /// </summary>
+        public void RemoveChunk(string chunkName)
+        {
+            chunks.RemoveAll(c => c.Name == chunkName);
+        }
+
+        /// <summary>
+        /// Encodes a list of chunks into PNG data.
+        /// </summary>
+        private byte[] WriteChunks()
+        {
+            int totalSize = 8; // PNG signature
+
+            foreach (var chunk in chunks)
+                totalSize += 12 + chunk.Data.Length; // Length (4) + Type (4) + Data + CRC (4)
+
+            var output = new byte[totalSize];
+            var idx = 0;
+
+            // Write PNG signature
+            WritePngHeader(output, ref idx);
+
+            // Write chunks
+            foreach (var chunk in chunks)
+            {
+                // Write chunk length
+                BinaryPrimitives.WriteUInt32BigEndian(output.AsSpan(idx), (uint)chunk.Data.Length);
+                idx += 4;
+
+                // Write chunk type
+                var nameBytes = Encoding.ASCII.GetBytes(chunk.Name);
+                nameBytes.CopyTo(output, idx);
+                idx += 4;
+
+                // Write chunk data
+                chunk.Data.CopyTo(output, idx);
+                idx += chunk.Data.Length;
+
+                // Compute and write CRC
+                var crcData = new byte[4 + chunk.Data.Length];
+                nameBytes.CopyTo(crcData, 0);
+                chunk.Data.CopyTo(crcData, 4);
+                var crc = ComputeCrc32(crcData);
+
+                BinaryPrimitives.WriteUInt32BigEndian(output.AsSpan(idx), crc);
+                idx += 4;
+            }
+
+            return output;
+        }
+
+        /// <summary>
+        /// Computes the CRC-32 checksum for the given data.
+        /// </summary>
+        private uint ComputeCrc32(byte[] data)
+        {
+            uint crc = Crc32.HashToUInt32(data);
+            return crc;
+        }
+
+        #region Helper Methods
+
+        private bool IsValidPngHeader(byte[] data)
+        {
+            var pngSignature = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 };
+            if (data.Length < pngSignature.Length)
+                return false;
+
+            return data.AsSpan(0, pngSignature.Length).SequenceEqual(pngSignature);
+        }
+
+        private void WritePngHeader(byte[] output, ref int idx)
+        {
+            var pngSignature = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 };
+            pngSignature.CopyTo(output.AsSpan(idx));
+            idx += pngSignature.Length;
+        }
+
+        #endregion
     }
-
-    #region Helper Methods
-
-    private static bool IsLatin1(string s) => s.All(c => c <= 0xFF);
-
-    private static bool IsValidPngHeader(byte[] data)
-    {
-        var pngSignature = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
-        return data.Length >= 8 && data.Take(8).SequenceEqual(pngSignature);
-    }
-
-    private static void WritePngHeader(byte[] output, ref int idx)
-    {
-        var pngHeader = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
-        Array.Copy(pngHeader, 0, output, idx, pngHeader.Length);
-        idx += pngHeader.Length;
-    }
-    #endregion
 }
 
