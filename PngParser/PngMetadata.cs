@@ -79,13 +79,13 @@ namespace PngParser
         public void Save()
         {
 
-            File.WriteAllBytes(pngPath, WriteChunks(chunks));
+            File.WriteAllBytes(pngPath, WriteChunks());
         }
 
         public void Save(string path)
         {
 
-            File.WriteAllBytes(path, WriteChunks(chunks));
+            File.WriteAllBytes(path, WriteChunks());
         }
         /// <summary>
         /// Adds or updates textual chunks (tEXt, iTXt, zTXt) based on the given dictionary.
@@ -225,6 +225,14 @@ namespace PngParser
         }
 
         /// <summary>
+        /// Determines if a chunk is a textual chunk (tEXt, iTXt, zTXt).
+        /// </summary>
+        private bool IsPhysChunk(string chunkName)
+        {
+            return chunkName == "pHYs";
+        }
+
+        /// <summary>
         /// Extracts the keyword from a textual chunk.
         /// </summary>
         private string ExtractKeyword(Chunk chunk)
@@ -299,6 +307,14 @@ namespace PngParser
             }
 
             return metadata;
+        }
+        public PhysChunkData ReadPhysChunk()
+        {
+            var metadata = new Dictionary<string, string>();
+
+            var phys = chunks.FirstOrDefault(chunk => IsPhysChunk(chunk.Name))
+                             ?? throw new InvalidDataException("\"No chunk with IsPhysChunk found.");
+            return PngUtilities.PhysDecodeData(phys);
         }
         /// <summary>
         /// Removes a chunk from the list by name.

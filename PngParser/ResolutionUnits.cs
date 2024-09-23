@@ -1,9 +1,9 @@
-namespace PngParser;
-
-public enum ResolutionUnits
+namespace PngParser
 {
-    Undefined = 0,
-    Meters = 1,
-    Inches = 2
+    public enum ResolutionUnits
+    {
+        Undefined = 0,
+        Meters = 1,
+        Inches = 2
+    }
 }
-
