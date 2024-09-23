@@ -20,235 +20,109 @@ dotnet add package PngParser.Net
 
 ## Usage
 
-### Reading Metadata
+### Reading and Writing Metadata
+
+#### Initialize the `PngMetadata` Class
 
 ```csharp
-using System;
-using System.Collections.Generic;
-using System.IO;
 using PngParser;
 
 class Program
 {
     static void Main()
     {
-        byte[] pngData = File.ReadAllBytes("input.png");
+        // Initialize PngMetadata by reading an existing PNG file
+        var pngMetadata = new PngMetadata("input.png");
 
-        // Extract all chunks
-        List<Chunk> chunks = PngMetadata.ReadChunks(pngData);
+        // Read textual metadata from the PNG file
+        var metadata = pngMetadata.ReadTextChunks();
 
-        // Extract textual metadata
-        var textData = new Dictionary<string, string>();
-        foreach (var chunk in chunks)
+        // Display the metadata
+        foreach (var kvp in metadata)
         {
-            if (PngUtilities.IsTextChunk(chunk.Name))
-            {
-                string keyword;
-                string text;
-
-                switch (chunk.Name)
-                {
-                    case "tEXt":
-                        (keyword, text) = PngUtilities.TextDecode(chunk);
-                        break;
-                    case "iTXt":
-                        var (iKeyword, _, _, _, iText) = PngUtilities.ITXtDecode(chunk);
-                        keyword = iKeyword;
-                        text = iText;
-                        break;
-                    case "zTXt":
-                        (keyword, text) = PngUtilities.ZTxtDecode(chunk);
-                        break;
-                    default:
-                        continue;
-                }
-
-                textData[keyword] = text;
-            }
-        }
-
-        // Extract physical dimension metadata
-        var physChunk = chunks.Find(c => c.Name == "pHYs");
-        PhysChunkData physData = null;
-        if (physChunk != null)
-        {
-            physData = PngUtilities.PhysDecodeData(physChunk);
-        }
-
-        // Display tEXt metadata
-        foreach (var kvp in textData)
             Console.WriteLine($"Keyword: {kvp.Key}, Text: {kvp.Value}");
-
-        // Display pHYs metadata
-        if (physData != null)
-            Console.WriteLine($"pHYs Data - X: {physData.X}, Y: {physData.Y}, Unit: {physData.Unit}");
-    }
-}
-
-```
-
-### Writing Metadata
-
-```csharp
-using System;
-using System.Collections.Generic;
-using System.IO;
-using PngParser;
-
-class Program
-{
-    static void Main()
-    {
-        byte[] pngData = File.ReadAllBytes("input.png");
-
-        // Extract all chunks
-        List<Chunk> chunks = PngMetadata.ReadChunks(pngData);
-
-        // Create new textual chunks
-        var newTextChunks = new List<Chunk>
-        {
-            // Update existing tEXt chunk
-            new Chunk
-            {
-                Name = "tEXt",
-                Data = PngUtilities.TextEncodeData("Author", "Jane Smith")
-            },
-            // Add new iTXt chunk
-            new Chunk
-            {
-                Name = "iTXt",
-                Data = PngUtilities.ITXtEncodeData("Title", "Unit Test Image")
-            },
-            // Add new zTXt chunk
-            new Chunk
-            {
-                Name = "zTXt",
-                Data = PngUtilities.ZTxtEncodeData("Description", "This image is used for unit testing.")
-            }
-        };
-
-        // Insert or update textual chunks
-        foreach (var textChunk in newTextChunks)
-        {
-            PngMetadata.AddOrUpdateTextChunk(chunks, textChunk);
         }
 
-        // Create or update pHYs chunk
-        var physChunk = new Chunk
+        // Update metadata by adding or modifying textual chunks
+        var newMetadata = new Dictionary<string, string>
         {
-            Name = "pHYs",
-            Data = PngUtilities.PhysEncodeData(2835, 2835, (byte)ResolutionUnits.Meters)
+            { "Author", "Jane Smith" },
+            { "Description", "Test Image with updated metadata" }
         };
-        PngMetadata.InsertOrReplaceChunk(chunks, physChunk);
 
-        // Write the modified chunks back to PNG data
-        byte[] newPngData = PngMetadata.WriteChunks(chunks);
+        pngMetadata.UpdateTextChunks(newMetadata);
 
         // Save the modified PNG file
-        File.WriteAllBytes("output.png", newPngData);
+        pngMetadata.Save();
     }
 }
+```
+### Removing a Specific Chunk
 
+You can remove a chunk (e.g., a `tEXt` chunk) from the PNG file using the `RemoveChunk` method:
+
+```csharp
+var pngMetadata = new PngMetadata("input.png");
+
+// Remove all tEXt chunks
+pngMetadata.RemoveChunk("tEXt");
+
+// Save the modified PNG
+pngMetadata.Save("output_without_text_chunks.png");
 ```
 
-## API Reference
+### Inserting or Replacing a Chunk
 
-- - ### Classes and Methods
-  
-    #### **PngMetadata**: Static class providing methods to read and write PNG metadata.
-  
-    - **`List<Chunk> ReadChunks(byte[] buffer)`**:
-      Reads all chunks from a PNG byte array.
-  
-    - **`byte[] WriteChunks(List<Chunk> chunks)`**:
-      Encodes a list of chunks back into a PNG byte array.
-  
-    - **`void InsertOrReplaceChunk(List<Chunk> chunks, Chunk newChunk)`**:
-      Inserts or replaces a single-instance chunk (e.g., `pHYs`).
-  
-      - Parameters
-  
-        :
-  
-        - `chunks`: List of existing chunks.
-        - `newChunk`: The chunk to insert or replace.
-  
-    - **`void AddOrUpdateTextChunk(List<Chunk> chunks, Chunk newChunk)`**:
-      Adds a new textual chunk (`tEXt`, `iTXt`, `zTXt`) or updates an existing one based on the keyword.
-  
-      - Parameters
-  
-        :
-  
-        - `chunks`: List of existing chunks.
-        - `newChunk`: The textual chunk to add or update.
-  
-    - **`void AddChunk(List<Chunk> chunks, Chunk newChunk)`**:
-      Adds a multi-instance chunk (`iTXt`, `zTXt`) to the list without replacing existing ones.
-  
-      - Parameters
-  
-        :
-  
-        - `chunks`: List of existing chunks.
-        - `newChunk`: The chunk to add.
-  
-    - **`void RemoveChunk(List<Chunk> chunks, string chunkName)`**:
-      Removes all chunks with the specified name.
-  
-      - Parameters
-  
-        :
-  
-        - `chunks`: List of existing chunks.
-        - `chunkName`: The name of the chunk to remove.
-  
-    #### **Chunk**: Represents a PNG chunk.
-  
-    - Properties
-  
-      :
-  
-      - `string Name`: The name of the chunk (e.g., "IHDR", "tEXt").
-      - `byte[] Data`: The data contained in the chunk.
-      - `bool IsCritical`: Determines whether the chunk is critical (true) or ancillary (false).
-  
-    #### **PhysChunkData**: Represents the data in a `pHYs` chunk.
-  
-    - Properties
-  
-      :
-  
-      - `uint X`: Pixels per unit in the X direction.
-      - `uint Y`: Pixels per unit in the Y direction.
-      - `byte Unit`: Unit specifier (`0` for unknown, `1` for meters).
-  
-    #### **ResolutionUnits**: Enum representing resolution units.
-  
-    - `Undefined = 0`
-    - `Meters = 1`
-    - `Inches = 2`
-  
-    #### **PngUtilities**: Static class providing helper methods for encoding and decoding chunks.
-  
-    - **Textual Chunk Methods**:
-      - `byte[] TextEncodeData(string keyword, string text)`: Encodes a `tEXt` chunk.
-      - `(string Keyword, string Text) TextDecode(Chunk chunk)`: Decodes a `tEXt` chunk.
-      - `byte[] ITXtEncodeData(string keyword, string text, bool compressed = false, string languageTag = "", string translatedKeyword = "")`: Encodes an `iTXt` chunk.
-      - `(string Keyword, bool Compressed, string LanguageTag, string TranslatedKeyword, string Text) ITXtDecode(Chunk chunk)`: Decodes an `iTXt` chunk.
-      - `byte[] ZTxtEncodeData(string keyword, string text)`: Encodes a `zTXt` chunk.
-      - `(string Keyword, string Text) ZTxtDecode(Chunk chunk)`: Decodes a `zTXt` chunk.
-      - `bool IsTextChunk(string chunkName)`: Determines if a chunk is a textual chunk.
-    - **Physical Chunk Methods**:
-      - `byte[] PhysEncodeData(uint xPixelsPerUnit, uint yPixelsPerUnit, byte unitSpecifier)`: Encodes a `pHYs` chunk.
-      - `PhysChunkData PhysDecodeData(Chunk chunk)`: Decodes a `pHYs` chunk.
-    - **Utility Methods**:
-      - `uint ReadUInt32BigEndian(byte[] data, int offset)`: Reads a 32-bit unsigned integer in big-endian format.
-      - `void WriteUInt32BigEndian(byte[] buffer, int offset, uint value)`: Writes a 32-bit unsigned integer in big-endian format.
+If you need to insert or replace a chunk in the PNG file (e.g., a `pHYs` chunk), you can use the `InsertOrReplaceChunk` method:
 
+```csharp
+var pngMetadata = new PngMetadata("input.png");
+
+var physChunk = new Chunk
+{
+    Name = "pHYs",
+    Data = PngUtilities.PhysEncodeData(2835, 2835, (byte)ResolutionUnits.Meters)
+};
+
+// Insert or replace the pHYs chunk
+pngMetadata.InsertOrReplaceChunk(physChunk);
+
+// Save the modified PNG
+pngMetadata.Save("output_with_phys.png");
+```
+### API Reference
+
+#### **PngMetadata**: Represents a PNG image and provides methods to modify its metadata.
+
+- **`PngMetadata(string path)`**:  
+  Initializes the `PngMetadata` class by loading a PNG file from the given file path.
+
+- **`Dictionary<string, string> ReadTextChunks()`**:  
+  Reads all textual chunks (`tEXt`, `iTXt`, `zTXt`) and returns them as a dictionary.
+
+- **`void UpdateTextChunks(Dictionary<string, string> metadata, string chunkType = "tEXt")`**:  
+  Adds or updates textual chunks based on the provided metadata dictionary. The `chunkType` parameter specifies the type of chunk (`tEXt`, `iTXt`, `zTXt`).
+
+- **`void InsertOrReplaceChunk(Chunk newChunk)`**:  
+  Inserts or replaces a single-instance chunk (e.g., `pHYs`).
+
+- **`void RemoveChunk(string chunkName)`**:  
+  Removes all chunks with the specified name.
+
+- **`void Save()`**:  
+  Saves the modified PNG back to the original file path.
+
+- **`void Save(string path)`**:  
+  Saves the modified PNG to a specified file path.
+
+### Chunk Structure
+
+- **`Chunk`**: Represents a PNG chunk.
+  - **`Name`**: The chunk name (e.g., `"tEXt"`, `"IHDR"`, `"IDAT"`, etc.).
+  - **`Data`**: The chunk data as a byte array.
 ## Compatibility
 
-PngParser.Net targets **.NET 8** and higher, may make some work for compatible and migrate it to .Net Standard 2.0 if someone need it.
+PngParser.Net targets **.NET 7** and higher, compatible to .Net Standard 2.0.
 
 ## Building from Source
 
